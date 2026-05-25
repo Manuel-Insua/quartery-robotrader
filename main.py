@@ -54,7 +54,7 @@ def _load_portfolio() -> tuple[float, dict, dict]:
     """
     # ── Efectivo desde JSON local ──────────────────────────────────────────────
     capital, metadata = load_cash_state(ESTADO_PATH)
-    logger.info("Efectivo neto: %,.2f EUR (fuente: %s)", capital, ESTADO_PATH.name)
+    logger.info("Efectivo neto: %s EUR (fuente: %s)", f"{capital:,.2f}", ESTADO_PATH.name)
 
     # ── Posiciones desde Google Sheets ─────────────────────────────────────────
     try:
@@ -89,8 +89,8 @@ def main() -> None:
         sys.exit(1)
 
     logger.info(
-        "Efectivo neto: %,.2f EUR  |  Posiciones activas: %s",
-        capital, list(positions.keys()),
+        "Efectivo neto: %s EUR  |  Posiciones activas: %s",
+        f"{capital:,.2f}", list(positions.keys()),
     )
 
     # ── 2. Ingesta y caché de precios ──────────────────────────────────────────
@@ -137,8 +137,8 @@ def main() -> None:
         BANDA_TOLERANCIA_ABS, BANDA_TOLERANCIA_REL,
     )
     logger.info(
-        "NAV total: %,.2f EUR  |  Órdenes generadas: %d  (COMPRAR: %d, VENDER: %d)",
-        nav,
+        "NAV total: %s EUR  |  Órdenes generadas: %d  (COMPRAR: %d, VENDER: %d)",
+        f"{nav:,.2f}",
         len(orders),
         sum(1 for v in orders.values() if v > 0),
         sum(1 for v in orders.values() if v < 0),
