@@ -33,20 +33,55 @@ from config import (
     BANDA_TOLERANCIA_REL,
     DIAS_HISTORICO,
     ESTADO_PATH,
+    GDRIVE_CREDENTIALS_PATH,
+    GDRIVE_STOCKS_FOLDER_ID,
+    GDRIVE_TOKEN_PATH,
     MAX_PESO_ACTIVO,
     UNIVERSO_IBEX,
 )
+from data.gdrive import load_from_drive
 from data.ingester import fetch_prices, get_current_prices
 from mathematical.optimizer import optimize_min_variance
 from presentation.output import ReportData, print_report
-from reconciliation.engine import compute_deltas, compute_nav, load_portfolio_state
+from reconciliation.engine import (
+    compute_deltas,
+    compute_nav,
+    load_portfolio_state,
+    parse_portfolio_state,
+)
+
+
+def _load_portfolio() -> tuple[float, dict, dict]:
+    """
+    Intenta cargar el estado de cartera desde Google Drive.
+    Si Drive no está disponible (sin credenciales, sin red, etc.)
+    cae al archivo local estado_cartera.json.
+    """
+    try:
+        data = load_from_drive(
+            GDRIVE_STOCKS_FOLDER_ID,
+            GDRIVE_CREDENTIALS_PATH,
+            GDRIVE_TOKEN_PATH,
+        )
+        logger.info("Estado cargado desde Google Drive (documentación/bancos/stocks/)")
+        return parse_portfolio_state(data)
+    except RuntimeError as exc:
+        # Credenciales no configuradas → aviso informativo, no error crítico
+        logger.warning("Google Drive no disponible: %s", exc)
+    except FileNotFoundError as exc:
+        logger.warning("Archivo no encontrado en Drive: %s", exc)
+    except Exception as exc:
+        logger.warning("Error inesperado al acceder a Drive (%s). Usando copia local.", exc)
+
+    logger.info("Fallback: cargando estado desde '%s'", ESTADO_PATH.name)
+    return load_portfolio_state(ESTADO_PATH)
 
 
 def main() -> None:
     # ── 1. Estado de la cartera ────────────────────────────────────────────────
-    logger.info("━━━ [1/5] Cargando estado de cartera desde '%s' ━━━", ESTADO_PATH.name)
+    logger.info("━━━ [1/5] Cargando estado de cartera ━━━")
     try:
-        capital, positions, metadata = load_portfolio_state(ESTADO_PATH)
+        capital, positions, metadata = _load_portfolio()
     except (FileNotFoundError, ValueError) as exc:
         logger.critical("Error al leer el estado de cartera: %s", exc)
         sys.exit(1)

@@ -4,7 +4,13 @@ BASE_DIR = Path(__file__).parent
 
 # ── Rutas ─────────────────────────────────────────────────────────────────────
 DB_PATH = BASE_DIR / "data" / "spanish_market_cache.db"
-ESTADO_PATH = BASE_DIR / "estado_cartera.json"
+ESTADO_PATH = BASE_DIR / "estado_cartera.json"   # copia local / fallback
+
+# ── Google Drive ───────────────────────────────────────────────────────────────
+# Carpeta: Mi Drive / 01. Documentación / Bancos / Stocks
+GDRIVE_STOCKS_FOLDER_ID: str = "1p-Fafu4pYvIbpFjrQSIGIHPvUVCNvWEi"
+GDRIVE_CREDENTIALS_PATH: Path = BASE_DIR / "credentials.json"
+GDRIVE_TOKEN_PATH: Path = BASE_DIR / "token.json"
 
 # ── Universo IBEX 35 ──────────────────────────────────────────────────────────
 UNIVERSO_IBEX: list[str] = [

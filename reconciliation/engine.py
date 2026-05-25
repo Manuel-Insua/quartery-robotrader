@@ -11,30 +11,15 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def load_portfolio_state(path: Path) -> tuple[float, dict[str, int], dict]:
+def parse_portfolio_state(data: dict) -> tuple[float, dict[str, int], dict]:
     """
-    Parsea estado_cartera.json y devuelve (capital_neto_eur, posiciones, metadata).
+    Valida y convierte el diccionario de estado de cartera en
+    (capital_neto_eur, posiciones, metadata).
 
     Capital neto = efectivo.disponible − efectivo.reserva_gastos.
-    Posiciones acepta tanto enteros simples {"SAN.MC": 500} como
-    objetos enriquecidos {"SAN.MC": {"cantidad": 500, "precio_coste": 3.85}}.
+    Posiciones acepta enteros simples {"SAN.MC": 500} o
+    objetos {"SAN.MC": {"cantidad": 500, "precio_coste": 3.85}}.
     """
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Archivo de estado no encontrado: '{path}'\n"
-            "Formato mínimo requerido:\n"
-            '  {\n'
-            '    "efectivo": {"disponible": 10000, "reserva_gastos": 0},\n'
-            '    "posiciones": {"SAN.MC": 100}\n'
-            '  }'
-        )
-
-    try:
-        with path.open(encoding="utf-8") as f:
-            data = json.load(f)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"JSON inválido en '{path}': {exc}") from exc
-
     efectivo = data.get("efectivo", {})
     disponible = efectivo.get("disponible")
     if disponible is None or not isinstance(disponible, (int, float)):
@@ -60,6 +45,30 @@ def load_portfolio_state(path: Path) -> tuple[float, dict[str, int], dict]:
             positions[ticker] = qty
 
     return capital_neto, positions, data.get("metadata", {})
+
+
+def load_portfolio_state(path: Path) -> tuple[float, dict[str, int], dict]:
+    """
+    Lee estado_cartera.json desde disco y devuelve (capital_neto_eur, posiciones, metadata).
+    Para cargar desde un diccionario ya en memoria usa parse_portfolio_state().
+    """
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Archivo de estado no encontrado: '{path}'\n"
+            "Formato mínimo requerido:\n"
+            '  {\n'
+            '    "efectivo": {"disponible": 10000, "reserva_gastos": 0},\n'
+            '    "posiciones": {"SAN.MC": 100}\n'
+            '  }'
+        )
+
+    try:
+        with path.open(encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"JSON inválido en '{path}': {exc}") from exc
+
+    return parse_portfolio_state(data)
 
 
 def compute_nav(

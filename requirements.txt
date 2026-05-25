@@ -1,0 +1,13 @@
+yfinance>=0.2.40
+pandas>=2.0.0
+numpy>=1.24.0
+PyPortfolioOpt>=1.5.5
+requests>=2.31.0
+
+# Google Drive integration
+google-api-python-client>=2.100.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.2.0
+
+# Optional: better anti-fingerprint for Yahoo Finance (reduces 403/999 errors)
+# curl_cffi>=0.6.0
