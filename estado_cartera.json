@@ -1,0 +1,16 @@
+{
+  "metadata": {
+    "fecha_ultimo_rebalanceo": "2026-05-25",
+    "divisa": "EUR"
+  },
+  "efectivo": {
+    "disponible": 20000.00,
+    "reserva_gastos": 500.00
+  },
+  "posiciones": {
+    "SAN.MC":  {"cantidad": 500, "precio_coste": 3.85},
+    "IBE.MC":  {"cantidad": 200, "precio_coste": 11.20},
+    "TEF.MC":  {"cantidad": 300, "precio_coste": 4.05},
+    "BBVA.MC": {"cantidad": 150, "precio_coste": 8.90}
+  }
+}
