@@ -34,47 +34,49 @@ from config import (
     DIAS_HISTORICO,
     ESTADO_PATH,
     GDRIVE_CREDENTIALS_PATH,
-    GDRIVE_STOCKS_FOLDER_ID,
+    GDRIVE_SHEET_POSICIONES,
+    GDRIVE_SPREADSHEET_ID,
     GDRIVE_TOKEN_PATH,
     MAX_PESO_ACTIVO,
     UNIVERSO_IBEX,
 )
-from data.gdrive import load_from_drive
+from data.gdrive import load_positions_from_sheets
 from data.ingester import fetch_prices, get_current_prices
 from mathematical.optimizer import optimize_min_variance
 from presentation.output import ReportData, print_report
-from reconciliation.engine import (
-    compute_deltas,
-    compute_nav,
-    load_portfolio_state,
-    parse_portfolio_state,
-)
+from reconciliation.engine import compute_deltas, compute_nav, load_cash_state
 
 
 def _load_portfolio() -> tuple[float, dict, dict]:
     """
-    Intenta cargar el estado de cartera desde Google Drive.
-    Si Drive no está disponible (sin credenciales, sin red, etc.)
-    cae al archivo local estado_cartera.json.
+    Efectivo: estado_cartera.json (local).
+    Posiciones: pestaña 'posiciones' de Google Sheets, filtrando Estado=Abierta.
     """
+    # ── Efectivo desde JSON local ──────────────────────────────────────────────
+    capital, metadata = load_cash_state(ESTADO_PATH)
+    logger.info("Efectivo neto: %,.2f EUR (fuente: %s)", capital, ESTADO_PATH.name)
+
+    # ── Posiciones desde Google Sheets ─────────────────────────────────────────
     try:
-        data = load_from_drive(
-            GDRIVE_STOCKS_FOLDER_ID,
+        positions = load_positions_from_sheets(
+            GDRIVE_SPREADSHEET_ID,
+            GDRIVE_SHEET_POSICIONES,
             GDRIVE_CREDENTIALS_PATH,
             GDRIVE_TOKEN_PATH,
         )
-        logger.info("Estado cargado desde Google Drive (documentación/bancos/stocks/)")
-        return parse_portfolio_state(data)
     except RuntimeError as exc:
-        # Credenciales no configuradas → aviso informativo, no error crítico
-        logger.warning("Google Drive no disponible: %s", exc)
-    except FileNotFoundError as exc:
-        logger.warning("Archivo no encontrado en Drive: %s", exc)
+        logger.critical(
+            "No se pueden cargar posiciones desde Google Sheets: %s", exc
+        )
+        sys.exit(1)
+    except ValueError as exc:
+        logger.critical("Error al parsear la pestaña '%s': %s", GDRIVE_SHEET_POSICIONES, exc)
+        sys.exit(1)
     except Exception as exc:
-        logger.warning("Error inesperado al acceder a Drive (%s). Usando copia local.", exc)
+        logger.critical("Error inesperado al leer Google Sheets: %s", exc)
+        sys.exit(1)
 
-    logger.info("Fallback: cargando estado desde '%s'", ESTADO_PATH.name)
-    return load_portfolio_state(ESTADO_PATH)
+    return capital, positions, metadata
 
 
 def main() -> None:
@@ -83,7 +85,7 @@ def main() -> None:
     try:
         capital, positions, metadata = _load_portfolio()
     except (FileNotFoundError, ValueError) as exc:
-        logger.critical("Error al leer el estado de cartera: %s", exc)
+        logger.critical("Error al leer efectivo desde '%s': %s", ESTADO_PATH.name, exc)
         sys.exit(1)
 
     logger.info(

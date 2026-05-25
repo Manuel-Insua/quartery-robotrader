@@ -47,6 +47,44 @@ def parse_portfolio_state(data: dict) -> tuple[float, dict[str, int], dict]:
     return capital_neto, positions, data.get("metadata", {})
 
 
+def load_cash_state(path: Path) -> tuple[float, dict]:
+    """
+    Lee solo la sección 'efectivo' de estado_cartera.json.
+    Las posiciones se cargan por separado desde Google Sheets.
+
+    Returns:
+        (capital_neto_eur, metadata)
+    """
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Archivo de efectivo no encontrado: '{path}'\n"
+            "Formato mínimo requerido:\n"
+            '  {\n'
+            '    "efectivo": {"disponible": 10000, "reserva_gastos": 0}\n'
+            '  }'
+        )
+    try:
+        with path.open(encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"JSON inválido en '{path}': {exc}") from exc
+
+    efectivo = data.get("efectivo", {})
+    disponible = efectivo.get("disponible")
+    if disponible is None or not isinstance(disponible, (int, float)):
+        raise ValueError("'efectivo.disponible' debe ser un número positivo en euros.")
+
+    reserva = float(efectivo.get("reserva_gastos", 0.0))
+    capital_neto = float(disponible) - reserva
+
+    if capital_neto < 0:
+        raise ValueError(
+            f"Capital neto negativo ({capital_neto:.2f} EUR): "
+            "'efectivo.disponible' debe superar 'efectivo.reserva_gastos'."
+        )
+    return capital_neto, data.get("metadata", {})
+
+
 def load_portfolio_state(path: Path) -> tuple[float, dict[str, int], dict]:
     """
     Lee estado_cartera.json desde disco y devuelve (capital_neto_eur, posiciones, metadata).

@@ -6,9 +6,10 @@ BASE_DIR = Path(__file__).parent
 DB_PATH = BASE_DIR / "data" / "spanish_market_cache.db"
 ESTADO_PATH = BASE_DIR / "estado_cartera.json"   # copia local / fallback
 
-# ── Google Drive ───────────────────────────────────────────────────────────────
-# Carpeta: Mi Drive / 01. Documentación / Bancos / Stocks
-GDRIVE_STOCKS_FOLDER_ID: str = "1p-Fafu4pYvIbpFjrQSIGIHPvUVCNvWEi"
+# ── Google Sheets ──────────────────────────────────────────────────────────────
+# Fuente de posiciones: Mi Drive / 01. Documentación / Bancos / Stocks / Seguimiento Stocks
+GDRIVE_SPREADSHEET_ID: str = "17Ge2Rur8HIkhYDSdgwfTJeAdCfCbylwTikZEI6wOCqE"
+GDRIVE_SHEET_POSICIONES: str = "posiciones"
 GDRIVE_CREDENTIALS_PATH: Path = BASE_DIR / "credentials.json"
 GDRIVE_TOKEN_PATH: Path = BASE_DIR / "token.json"
 

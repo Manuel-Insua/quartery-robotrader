@@ -1,27 +1,19 @@
 """
-Integración con Google Drive para carga del estado de cartera.
-Lee estado_cartera.json desde la carpeta Drive configurada (documentación/bancos/stocks/),
-con fallback automático al archivo local si Drive no está disponible o las
-credenciales no están configuradas.
+Integración con Google Sheets para carga de posiciones abiertas.
+Lee la pestaña 'posiciones' de 'Seguimiento Stocks', filtra Estado='Abierta',
+agrega N_Valores por ticker (sufijo .MC) y calcula precio_coste medio ponderado.
 """
 
-import io
-import json
 import logging
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
-_FILE_NAME = "estado_cartera.json"
+_SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+_REQUIRED_COLS = {"Valor", "N_Valores", "P_Compra", "Estado"}
 
 
 def _get_credentials(credentials_path: Path, token_path: Path):
-    """
-    Retorna credenciales OAuth2 válidas para la Drive API.
-    En el primer uso abre el flujo de consentimiento en el navegador.
-    En usos posteriores reutiliza el token guardado en disco.
-    """
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
     from google_auth_oauthlib.flow import InstalledAppFlow
@@ -44,73 +36,108 @@ def _get_credentials(credentials_path: Path, token_path: Path):
     return creds
 
 
-def load_from_drive(
-    folder_id: str,
+def _parse_es_float(s: str) -> float:
+    """Convierte número en formato español (1.605,24) a float (1605.24)."""
+    return float(s.strip().replace(".", "").replace(",", "."))
+
+
+def load_positions_from_sheets(
+    spreadsheet_id: str,
+    sheet_name: str,
     credentials_path: Path,
     token_path: Path,
-) -> dict:
+) -> dict[str, dict]:
     """
-    Descarga estado_cartera.json desde la carpeta Drive especificada y
-    lo devuelve como diccionario Python.
+    Lee la pestaña sheet_name, filtra filas con Estado='Abierta',
+    agrega N_Valores por ticker y calcula precio_coste medio ponderado.
 
-    Primer uso: abre el navegador para el consentimiento OAuth2.
-    Usos posteriores: usa el token guardado localmente (token.json).
+    Primer uso: abre navegador para consentimiento OAuth2.
+    Usos posteriores: reutiliza token.json.
+
+    Returns:
+        {ticker: {"cantidad": int, "precio_coste": float}}
 
     Raises:
-        RuntimeError: si credentials.json no existe.
-        FileNotFoundError: si el archivo no existe en la carpeta Drive.
+        RuntimeError: si credentials.json no existe o dependencias no instaladas.
+        ValueError: si la cabecera no se encuentra en la pestaña.
     """
     try:
         from googleapiclient.discovery import build
-        from googleapiclient.http import MediaIoBaseDownload
     except ImportError as exc:
         raise RuntimeError(
-            "Dependencias de Google Drive no instaladas.\n"
+            "Dependencias de Google no instaladas.\n"
             "Ejecuta: pip install google-api-python-client google-auth-oauthlib"
         ) from exc
 
     if not credentials_path.exists():
         raise RuntimeError(
-            f"Credenciales de Google Drive no encontradas: '{credentials_path}'\n"
+            f"Credenciales no encontradas: '{credentials_path}'\n"
             "Pasos para configurar:\n"
             "  1. Abre https://console.cloud.google.com/\n"
-            "  2. Crea un proyecto y habilita la Drive API\n"
+            "  2. Crea un proyecto y habilita la Sheets API\n"
             "  3. Crea credenciales OAuth 2.0 (tipo: aplicación de escritorio)\n"
-            "  4. Descarga credentials.json y colócalo en el directorio del proyecto"
+            "  4. Descarga credentials.json y colócalo junto a main.py"
         )
 
     creds = _get_credentials(credentials_path, token_path)
-    service = build("drive", "v3", credentials=creds, cache_discovery=False)
+    service = build("sheets", "v4", credentials=creds, cache_discovery=False)
 
-    query = (
-        f"name = '{_FILE_NAME}' "
-        f"and '{folder_id}' in parents "
-        f"and trashed = false"
-    )
-    results = (
-        service.files()
-        .list(q=query, fields="files(id, name, modifiedTime)", pageSize=1)
+    result = (
+        service.spreadsheets()
+        .values()
+        .get(spreadsheetId=spreadsheet_id, range=sheet_name)
         .execute()
     )
-    files = results.get("files", [])
+    rows = result.get("values", [])
 
-    if not files:
-        raise FileNotFoundError(
-            f"'{_FILE_NAME}' no encontrado en la carpeta Drive (id={folder_id}).\n"
-            "Sube el archivo a Google Drive en la ruta: documentación/bancos/stocks/"
+    # Localizar la fila de cabeceras buscando las columnas requeridas
+    header_idx, col = None, {}
+    for i, row in enumerate(rows):
+        if _REQUIRED_COLS.issubset(set(row)):
+            header_idx = i
+            col = {name: idx for idx, name in enumerate(row)}
+            break
+
+    if header_idx is None:
+        raise ValueError(
+            f"Cabeceras no encontradas en la pestaña '{sheet_name}'. "
+            f"Columnas requeridas: {_REQUIRED_COLS}"
         )
 
-    file_id = files[0]["id"]
-    modified = files[0].get("modifiedTime", "desconocida")
+    total_shares: dict[str, int] = {}
+    weighted_cost: dict[str, float] = {}
+
+    for row in rows[header_idx + 1:]:
+        try:
+            estado = row[col["Estado"]].strip()
+        except IndexError:
+            continue
+        if estado != "Abierta":
+            continue
+
+        try:
+            ticker = row[col["Valor"]].strip() + ".MC"
+            n = int(row[col["N_Valores"]])
+            p = _parse_es_float(row[col["P_Compra"]])
+        except (ValueError, IndexError):
+            continue
+
+        prev = total_shares.get(ticker, 0)
+        total_shares[ticker] = prev + n
+        weighted_cost[ticker] = (
+            (weighted_cost.get(ticker, 0.0) * prev + p * n) / total_shares[ticker]
+        )
+
+    posiciones = {
+        ticker: {
+            "cantidad": shares,
+            "precio_coste": round(weighted_cost[ticker], 4),
+        }
+        for ticker, shares in total_shares.items()
+    }
+
     logger.info(
-        "Descargando %s desde Google Drive (última modificación: %s)", _FILE_NAME, modified
+        "Posiciones leídas desde Sheets '%s' (%d tickers abiertos): %s",
+        sheet_name, len(posiciones), list(posiciones.keys()),
     )
-
-    request = service.files().get_media(fileId=file_id)
-    buffer = io.BytesIO()
-    downloader = MediaIoBaseDownload(buffer, request)
-    done = False
-    while not done:
-        _, done = downloader.next_chunk()
-
-    return json.loads(buffer.getvalue().decode("utf-8"))
+    return posiciones
